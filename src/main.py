@@ -4,6 +4,7 @@ import mediapipe as mp
 import math
 from screeninfo import get_monitors
 import pyautogui
+from statistics import mean
 
 #モニターの情報取得
 monitors = get_monitors()
@@ -11,8 +12,10 @@ screen_w = monitors[0].width
 screen_h = monitors[0].height
 #OpenCvの設定
 cap = cv2.VideoCapture(0)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, monitors[0].width)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, monitors[0].height)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, screen_w/2)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, screen_h/2)
+# cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+# cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 360)
 cap.set(cv2.CAP_PROP_FPS, 30)
 #Mediapipeの設定
 mp_hands = mp.solutions.hands
@@ -24,14 +27,16 @@ hands = mp_hands.Hands(
 )
 #pyautoguiに関する設定
 pyautogui.PAUSE = 0
-alpha = 0.2
+alpha = 0.5
 threshold = 5
 mouse_x = None
 mouse_y = None
 smooth_x = None
 smooth_y = None
-#点の色
+#描画の設定
+circle_radius = 4
 circle_color = (0, 255, 0)
+line_thickness = 2
 #EMA関数
 def ema(prev_x, prev_y, target_x, target_y, alpha):
 	x = prev_x + alpha * (target_x - prev_x)
@@ -69,15 +74,19 @@ while cap.isOpened():
 				y1 = int(p1.y * h)
 				x2 = int(p2.x * w)
 				y2 = int(p2.y * h)
-				cv2.line(frame, (x1, y1), (x2, y2), line_color, 3)
+				cv2.line(frame, (x1, y1), (x2, y2), line_color, line_thickness)
 			for lm in hand_landmarks.landmark:
 				x = int(lm.x * w)
 				y = int(lm.y * h)
-				cv2.circle(frame, (x, y), 8, circle_color, -1)
+				cv2.circle(frame, (x, y), circle_radius, circle_color, -1)
+			indices = [0, 1, 5, 9, 13, 17]
+			target_x_frame = int(mean([hand_landmarks.landmark[i].x for i in indices]) * w)
+			target_y_frame = int(mean([hand_landmarks.landmark[i].y for i in indices]) * h)
+			cv2.circle(frame, (target_x_frame, target_y_frame), circle_radius, (0, 255, 255), -1)
+
 			#マウス操作
-			index_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
-			target_x = index_tip.x * screen_w
-			target_y = index_tip.y * screen_h
+			target_x = int(mean([hand_landmarks.landmark[i].x for i in indices]) * screen_w)
+			target_y = int(mean([hand_landmarks.landmark[i].y for i in indices]) * screen_h)
 			#初回のみ
 			if smooth_x is None:
 				smooth_x = target_x
