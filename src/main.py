@@ -27,10 +27,10 @@ hands = mp_hands.Hands(
 )
 #pyautoguiに関する設定
 pyautogui.PAUSE = 0
-alpha = 0.5
-threshold = 5
-mouse_x = None
-mouse_y = None
+alpha = 0.3
+threshold = 4
+cursor_x = None
+cursor_y = None
 smooth_x = None
 smooth_y = None
 #描画の設定
@@ -66,39 +66,41 @@ while cap.isOpened():
 			else:
 				line_color = (255, 0, 0)
 			#点と線の色指定
-			h, w, _ = frame.shape
+			frame_h, frame_w, _ = frame.shape
 			for start, end in mp_hands.HAND_CONNECTIONS:
-				p1 = hand_landmarks.landmark[start]
-				p2 = hand_landmarks.landmark[end]
-				x1 = int(p1.x * w)
-				y1 = int(p1.y * h)
-				x2 = int(p2.x * w)
-				y2 = int(p2.y * h)
-				cv2.line(frame, (x1, y1), (x2, y2), line_color, line_thickness)
+				mp_p1 = hand_landmarks.landmark[start]
+				mp_p2 = hand_landmarks.landmark[end]
+				frame_x1 = int(mp_p1.x * frame_w)
+				frame_y1 = int(mp_p1.y * frame_h)
+				frame_x2 = int(mp_p2.x * frame_w)
+				frame_y2 = int(mp_p2.y * frame_h)
+				cv2.line(frame, (frame_x1, frame_y1), (frame_x2, frame_y2), line_color, line_thickness)
 			for lm in hand_landmarks.landmark:
-				x = int(lm.x * w)
-				y = int(lm.y * h)
-				cv2.circle(frame, (x, y), circle_radius, circle_color, -1)
+				frame_x = int(lm.x * frame_w)
+				frame_y = int(lm.y * frame_h)
+				cv2.circle(frame, (frame_x, frame_y), circle_radius, circle_color, -1)
 			indices = [0, 1, 5, 9, 13, 17]
-			target_x_frame = int(mean([hand_landmarks.landmark[i].x for i in indices]) * w)
-			target_y_frame = int(mean([hand_landmarks.landmark[i].y for i in indices]) * h)
-			cv2.circle(frame, (target_x_frame, target_y_frame), circle_radius, (0, 255, 255), -1)
+			mp_palm_x = mean([hand_landmarks.landmark[i].x for i in indices])
+			mp_palm_y = mean([hand_landmarks.landmark[i].y for i in indices])
+			frame_palm_x = int(mp_palm_x * frame_w)
+			frame_palm_y = int(mp_palm_y * frame_h)
+			cv2.circle(frame, (frame_palm_x, frame_palm_y), circle_radius, (0, 255, 255), -1)
 
 			#マウス操作
-			target_x = int(mean([hand_landmarks.landmark[i].x for i in indices]) * screen_w)
-			target_y = int(mean([hand_landmarks.landmark[i].y for i in indices]) * screen_h)
+			target_x = int(mp_palm_x * screen_w)
+			target_y = int(mp_palm_y * screen_h)
 			#初回のみ
 			if smooth_x is None:
 				smooth_x = target_x
 				smooth_y = target_y
-				mouse_x = target_x
-				mouse_y = target_y
+				cursor_x = target_x
+				cursor_y = target_y
 			smooth_x, smooth_y = ema(smooth_x, smooth_y, target_x, target_y, alpha)
 			#デッドゾーン
-			if in_deadzone(mouse_x, mouse_y, smooth_x, smooth_y, threshold) == False:
-				mouse_x = smooth_x
-				mouse_y = smooth_y
-				pyautogui.moveTo(mouse_x, mouse_y)
+			if in_deadzone(cursor_x, cursor_y, smooth_x, smooth_y, threshold) == False:
+				cursor_x = smooth_x
+				cursor_y = smooth_y
+				pyautogui.moveTo(cursor_x, cursor_y)
 
 	#確認用ウインドウの表示
 	cv2.imshow('Hand Tracking', frame)
