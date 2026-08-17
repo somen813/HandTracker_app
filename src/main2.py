@@ -126,10 +126,10 @@ while cap.isOpened():
 				frame_y = int(landmark.y * frame_h)
 				cv2.circle(frame, (frame_x, frame_y), 5, (0, 255, 0), -1)
 
+			#手のひらの重心に黄色の点
 			indices = [0, 1, 5, 9, 13, 17]
 			mp_palm_x = mean([hand_landmarks[i].x for i in indices])
 			mp_palm_y = mean([hand_landmarks[i].y for i in indices])
-			#手のひらの重心に黄色の点
 			frame_palm_x = int(mp_palm_x * frame_w)
 			frame_palm_y = int(mp_palm_y * frame_h)
 			cv2.circle(frame, (frame_palm_x, frame_palm_y), circle_radius, (0, 255, 255), -1)
