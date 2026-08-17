@@ -19,18 +19,27 @@ cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1980)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
 cap.set(cv2.CAP_PROP_FPS, 30)
 #Mediapipeの設定
-base_options = python .BaseOptions(
+hands_base_options = python.BaseOptions(
 	model_asset_path='../models/hand_landmarker.task'
 )
-options = vision.HandLandmarkerOptions(
-	base_options=base_options,
+hands_options = vision.HandLandmarkerOptions(
+	base_options=hands_base_options,
 	running_mode=vision.RunningMode.VIDEO,
 	num_hands=1,
 	min_hand_detection_confidence=0.3,
 	min_hand_presence_confidence=0.8,
 	min_tracking_confidence=0.1
 )
-detector = vision.HandLandmarker.create_from_options(options)
+hands_landmarker = vision.HandLandmarker.create_from_options(hands_options)
+gesture_base_options = python.BaseOptions(
+	model_asset_path='../models/gesture_recognizer.task'
+)
+gesture_options = vision.GestureRecognizerOptions(
+	base_options=gesture_base_options,
+	running_mode=vision.RunningMode.VIDEO,
+	num_hands=1
+)
+geseture_recognizer = vision.GestureRecognizer.create_from_options(gesture_options)
 timestamp_ms = 0
 connections = [
 	(0, 1), (1, 2), (2, 3), (3, 4),
@@ -73,14 +82,17 @@ while cap.isOpened():
 	ret, frame = cap.read()
 	if ret == False:
 		break
-	frame = cv2.flip(frame, 1)
 	rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 	mp_image = mp.Image(
 		image_format=mp.ImageFormat.SRGB,
 		data=rgb
 	)
 	timestamp_ms = time.monotonic_ns() // 1_000_000
-	result = detector.detect_for_video(
+	hands_result = hands_landmarker.detect_for_video(
+		mp_image,
+		timestamp_ms
+	)
+	gesture_result = geseture_recognizer.recognize_for_video(
 		mp_image,
 		timestamp_ms
 	)
@@ -98,15 +110,10 @@ while cap.isOpened():
 	cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 0), 4)
 
 	#手のランドマークの描画、及びカーソル操作
-	if result.hand_landmarks:
-		for i, hand_landmarks in enumerate(result.hand_landmarks):
-			handedness = result.handedness[i][0]
+	if hands_result.hand_landmarks:
+		for i, hand_landmarks in enumerate(hands_result.hand_landmarks):
+			handedness = hands_result.handedness[i][0]
 			handedness_name = handedness.category_name
-			#ウインドウを反転してるので反転処理
-			if handedness_name == 'Right':
-				handedness_name = 'Left'
-			elif handedness_name == 'Left':
-				handedness_name = 'Right'
 			#右手 -> 赤, 左手 -> 青
 			if handedness_name == 'Right':
 				line_color = (0, 0, 255)
@@ -136,7 +143,7 @@ while cap.isOpened():
 			#マウス操作
 			mp_palm_x = max(min_x, min(max_x, mp_palm_x))
 			mp_palm_y = max(min_y, min(max_y, mp_palm_y))
-			target_x = int((mp_palm_x - min_x) / (max_x - min_x) * screen_w)
+			target_x = int((1 - (mp_palm_x - min_x) / (max_x - min_x)) * screen_w)
 			target_y = int((mp_palm_y - min_y) / (max_y - min_y) * screen_h)
 			#初回のみ
 			if smooth_x is None:
@@ -152,7 +159,15 @@ while cap.isOpened():
 				cursor_y = smooth_y
 				pyautogui.moveTo(cursor_x, cursor_y)
 
+	if gesture_result.gestures:
+		gesture = gesture_result.gestures[0][0]
+		print(
+			gesture.category_name,
+			gesture.score
+		  )
+
 	#確認用ウインドウの表示
+	frame = cv2.flip(frame, 1)
 	display = cv2.resize(frame, (int(screen_w / 2), int(screen_h /2)))
 	cv2.imshow('Hand Tracking', display)
 	#Qキーを押すとループから抜ける
