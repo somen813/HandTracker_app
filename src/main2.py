@@ -31,16 +31,6 @@ hands_options = vision.HandLandmarkerOptions(
 	min_tracking_confidence=0.1
 )
 hands_landmarker = vision.HandLandmarker.create_from_options(hands_options)
-gesture_base_options = python.BaseOptions(
-	model_asset_path='../models/gesture_recognizer.task'
-)
-gesture_options = vision.GestureRecognizerOptions(
-	base_options=gesture_base_options,
-	running_mode=vision.RunningMode.VIDEO,
-	num_hands=1
-)
-geseture_recognizer = vision.GestureRecognizer.create_from_options(gesture_options)
-timestamp_ms = 0
 connections = [
 	(0, 1), (1, 2), (2, 3), (3, 4),
 	(0, 5), (5, 6), (6, 7), (7, 8),
@@ -63,6 +53,15 @@ cursor_x = None
 cursor_y = None
 smooth_x = None
 smooth_y = None
+last_click_time = 0
+click_cooldown = 3
+thumb_angle = None
+first_angle = None
+second_angle = None
+third_angle = None
+fourth_angle = None
+gesture = None
+open_palm_line = 120
 #描画の設定
 circle_radius = 8
 circle_color = (0, 255, 0)
@@ -76,7 +75,32 @@ def ema(prev_x, prev_y, target_x, target_y, alpha):
 def in_deadzone(prev_x, prev_y, x, y, threshold):
 	distance = math.hypot(x - prev_x, y - prev_y)
 	return distance < threshold
+#angle関数
+def angle(a, b, c):
+	ab_x = a.x - b.x
+	ab_y = a.y - b.y
+	cb_x = c.x - b.x
+	cb_y = c.y - b.y
+	dot = ab_x * cb_x + ab_y * cb_y
 
+	ab_len = math.hypot(ab_x, ab_y)
+	cb_len = math.hypot(cb_x, cb_y)
+	cos_angle = dot / (ab_len * cb_len)
+	cos_angle = max(-1.0, min(1.0, cos_angle))
+	return math.degrees(math.acos(cos_angle))
+#gesture関数q
+def gesture_judge(first_angle, second_angle, third_angle, fourth_angle):
+	if (
+		first_angle > open_palm_line
+		and second_angle > open_palm_line
+		and third_angle > open_palm_line
+		and fourth_angle > open_palm_line
+	):
+		gesture = 'Opened Palm'
+	else:
+		gesture = 'Closed Palm'
+	print(gesture)
+	return gesture
 #カメラが読み込まれてる時にループ
 while cap.isOpened():
 	ret, frame = cap.read()
@@ -89,10 +113,6 @@ while cap.isOpened():
 	)
 	timestamp_ms = time.monotonic_ns() // 1_000_000
 	hands_result = hands_landmarker.detect_for_video(
-		mp_image,
-		timestamp_ms
-	)
-	gesture_result = geseture_recognizer.recognize_for_video(
 		mp_image,
 		timestamp_ms
 	)
@@ -140,32 +160,59 @@ while cap.isOpened():
 			frame_palm_x = int(mp_palm_x * frame_w)
 			frame_palm_y = int(mp_palm_y * frame_h)
 			cv2.circle(frame, (frame_palm_x, frame_palm_y), circle_radius, (0, 255, 255), -1)
+
+			#ジェスチャーとクリック動作
+			first_angle = angle(
+				hand_landmarks[5],
+				hand_landmarks[6],
+				hand_landmarks[8]
+			)
+			second_angle = angle(
+				hand_landmarks[9],
+				hand_landmarks[10],
+				hand_landmarks[12]
+			)
+			third_angle = angle(
+				hand_landmarks[13],
+				hand_landmarks[14],
+				hand_landmarks[16]
+			)
+			fourth_angle = angle(
+				hand_landmarks[17],
+				hand_landmarks[18],
+				hand_landmarks[20]
+			)
+			gesture = gesture_judge(
+				first_angle, 
+				second_angle, 
+				third_angle, 
+				fourth_angle
+			)
+			if gesture == 'Closed Palm':
+				current_time = time.monotonic()
+				if current_time - last_click_time >= click_cooldown:
+					pyautogui.click()
+					last_click_time = current_time
 			#マウス操作
-			mp_palm_x = max(min_x, min(max_x, mp_palm_x))
-			mp_palm_y = max(min_y, min(max_y, mp_palm_y))
-			target_x = int((1 - (mp_palm_x - min_x) / (max_x - min_x)) * screen_w)
-			target_y = int((mp_palm_y - min_y) / (max_y - min_y) * screen_h)
-			#初回のみ
-			if smooth_x is None:
-				smooth_x = target_x
-				smooth_y = target_y
-				cursor_x = target_x
-				cursor_y = target_y
-			#EMA関数を使用して滑らかに
-			smooth_x, smooth_y = ema(smooth_x, smooth_y, target_x, target_y, alpha)
-			#デッドゾーン
-			if in_deadzone(cursor_x, cursor_y, smooth_x, smooth_y, threshold) == False:
-				cursor_x = smooth_x
-				cursor_y = smooth_y
-				pyautogui.moveTo(cursor_x, cursor_y)
-
-	if gesture_result.gestures:
-		gesture = gesture_result.gestures[0][0]
-		print(
-			gesture.category_name,
-			gesture.score
-		  )
-
+			if gesture != 'Closed Palm':
+				mp_palm_x = max(min_x, min(max_x, mp_palm_x))
+				mp_palm_y = max(min_y, min(max_y, mp_palm_y))
+				target_x = int((1 - (mp_palm_x - min_x) / (max_x - min_x)) * screen_w)
+				target_y = int((mp_palm_y - min_y) / (max_y - min_y) * screen_h)
+				#初回のみ
+				if smooth_x is None:
+					smooth_x = target_x
+					smooth_y = target_y
+					cursor_x = target_x
+					cursor_y = target_y
+				#EMA関数を使用して滑らかに
+				smooth_x, smooth_y = ema(smooth_x, smooth_y, target_x, target_y, alpha)
+				#デッドゾーン
+				if in_deadzone(cursor_x, cursor_y, smooth_x, smooth_y, threshold) == False:
+					cursor_x = smooth_x
+					cursor_y = smooth_y
+					pyautogui.moveTo(cursor_x, cursor_y)
+	
 	#確認用ウインドウの表示
 	frame = cv2.flip(frame, 1)
 	display = cv2.resize(frame, (int(screen_w / 2), int(screen_h /2)))
