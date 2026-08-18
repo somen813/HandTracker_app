@@ -19,6 +19,15 @@ cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1980)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
 cap.set(cv2.CAP_PROP_FPS, 30)
 #Mediapipeの設定
+face_base_options = python.BaseOptions(
+	model_asset_path='../models/blaze_face_full_range.tflite'
+)
+face_options = vision.FaceDetectorOptions(
+	base_options=face_base_options,
+	running_mode=vision.RunningMode.VIDEO,
+	min_detection_confidence=0.5
+)
+face_detector = vision.FaceDetector.create_from_options(face_options)
 hands_base_options = python.BaseOptions(
 	model_asset_path='../models/hand_landmarker.task'
 )
@@ -39,22 +48,35 @@ connections = [
 	(13, 17), (17, 18), (18, 19), (19, 20),
 	(0, 17)
 ]
+#顔検出の設定
+face_lost_count = 0
+face_lost_limit = 10
+face_smooth_x = None
+face_smooth_y = None
+face_smooth_w = None
+face_smooth_h = None
+face_alpha = 0.1
+face_ratio_x = 1.2
+face_ratio_y = 0.8
+offset_x = 0
+offset_y = 0
 #pyautoguiに関する設定
 pyautogui.PAUSE = 0
-alpha = 0.3
+cursor_alpha = 0.3
 threshold = 1
 margin_x = 0.2
 margin_y = 0.2
 min_x = margin_x
-max_x = 1- margin_x
+max_x = 1 - margin_x
 min_y = margin_y
-max_y = 1- margin_y
+max_y = 1 - margin_y
 cursor_x = None
 cursor_y = None
 smooth_x = None
 smooth_y = None
 last_click_time = 0
 click_cooldown = 0.3
+#ジェスチャーの設定
 thumb_angle = None
 first_angle = None
 second_angle = None
@@ -67,9 +89,9 @@ circle_radius = 8
 circle_color = (0, 255, 0)
 line_thickness = 4
 #EMA関数
-def ema(prev_x, prev_y, target_x, target_y, alpha):
-	x = prev_x + alpha * (target_x - prev_x)
-	y = prev_y + alpha * (target_y - prev_y)
+def ema(prev_x, prev_y, target_x, target_y, cursor_alpha):
+	x = prev_x + cursor_alpha * (target_x - prev_x)
+	y = prev_y + cursor_alpha * (target_y - prev_y)
 	return x, y
 #デッドゾーン関数
 def in_deadzone(prev_x, prev_y, x, y, threshold):
@@ -157,9 +179,62 @@ while cap.isOpened():
 		mp_image,
 		timestamp_ms
 	)
+	face_result = face_detector.detect_for_video(
+		mp_image,
+		timestamp_ms
+	)
+	frame_h, frame_w, _ = frame.shape
+	#顔検出
+	if face_result.detections:
+		face_lost_count = 0
+		detection = face_result.detections[0]
+		bbox = detection.bounding_box
+		face_x = bbox.origin_x / frame_w
+		face_y = bbox.origin_y / frame_h
+		face_w = bbox.width / frame_w
+		face_h = bbox.height / frame_h
+		#最初だけ
+		if face_smooth_x == None:
+			face_smooth_x = face_x
+			face_smooth_y = face_y
+			face_smooth_w = face_w
+			face_smooth_h = face_h
+		# 顔の位置・大きさを平滑化
+		face_smooth_x, face_smooth_y = ema(
+			face_smooth_x,
+			face_smooth_y,
+			face_x,
+			face_y,
+			face_alpha
+		)
+		face_smooth_w, face_smooth_h = ema(
+			face_smooth_w,
+			face_smooth_h,
+			face_w,
+			face_h,
+			face_alpha
+		)
+		face_center_x = face_smooth_x + face_smooth_w / 2
+		face_center_y = face_smooth_y + face_smooth_h / 2
+		offset_y = face_smooth_h * 1.4
+		min_x = face_center_x - face_smooth_w * face_ratio_x
+		max_x = face_center_x + face_smooth_w * face_ratio_x
+		min_y = face_center_y - face_smooth_h * face_ratio_y + offset_y
+		max_y = face_center_y + face_smooth_h * face_ratio_y + offset_y
+		min_x = max(0, min_x)
+		max_x = min(1, max_x)
+		min_y = max(0, min_y)
+		max_y = min(1, max_y)
+	else:
+		face_lost_count += 1
+		if face_lost_count > face_lost_limit:
+			#固定された範囲
+			min_x = margin_x
+			max_x = 1 - margin_x
+			min_y = margin_y
+			max_y = 1 - margin_y
 
 	#検知する範囲の描画
-	frame_h, frame_w, _ = frame.shape
 	left = int(frame_w * min_x)
 	right = int(frame_w * max_x)
 	top = int(frame_h * min_y)
@@ -252,7 +327,7 @@ while cap.isOpened():
 					cursor_x = target_x
 					cursor_y = target_y
 				#EMA関数を使用して滑らかに
-				smooth_x, smooth_y = ema(smooth_x, smooth_y, target_x, target_y, alpha)
+				smooth_x, smooth_y = ema(smooth_x, smooth_y, target_x, target_y, cursor_alpha)
 				#デッドゾーン
 				if in_deadzone(cursor_x, cursor_y, smooth_x, smooth_y, threshold) == False:
 					cursor_x = smooth_x
