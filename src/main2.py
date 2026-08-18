@@ -13,7 +13,7 @@ import time
 monitors = get_monitors()
 screen_w = monitors[0].width
 screen_h = monitors[0].height
-#OpenCvの設定
+#OpenCVの設定
 cap = cv2.VideoCapture(0)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1980)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
@@ -38,11 +38,11 @@ connections = [
 	(9, 13), (13, 14), (14, 15), (15, 16),
 	(13, 17), (17, 18), (18, 19), (19, 20),
 	(0, 17)
-	]
+]
 #pyautoguiに関する設定
 pyautogui.PAUSE = 0
 alpha = 0.3
-threshold = 3
+threshold = 1
 margin_x = 0.2
 margin_y = 0.2
 min_x = margin_x
@@ -54,7 +54,7 @@ cursor_y = None
 smooth_x = None
 smooth_y = None
 last_click_time = 0
-click_cooldown = 3
+click_cooldown = 0.3
 thumb_angle = None
 first_angle = None
 second_angle = None
@@ -88,7 +88,33 @@ def angle(a, b, c):
 	cos_angle = dot / (ab_len * cb_len)
 	cos_angle = max(-1.0, min(1.0, cos_angle))
 	return math.degrees(math.acos(cos_angle))
-#gesture関数q
+#angle_3d関数
+def angle_3d(a, b, c):
+	ab_x = a.x - b.x
+	ab_y = a.y - b.y
+	ab_z = a.z - b.z
+	cb_x = c.x - b.x
+	cb_y = c.y - b.y
+	cb_z = c.z - b.z
+	dot = (
+		ab_x * cb_x
+		+ ab_y * cb_y
+		+ ab_z * cb_z
+	)
+	ab_len = math.sqrt(
+		ab_x**2
+		+ ab_y**2
+		+ ab_z**2
+	)
+	cb_len = math.sqrt(
+		cb_x**2
+		+ cb_y**2
+		+ cb_z**2
+	)
+	cos_angle = dot / (ab_len * cb_len)
+	cos_angle = max(-1.0, min(1.0, cos_angle))
+	return math.degrees(math.acos(cos_angle))
+#gesture関数
 def gesture_judge(first_angle, second_angle, third_angle, fourth_angle):
 	if (
 		first_angle > open_palm_line
@@ -97,10 +123,25 @@ def gesture_judge(first_angle, second_angle, third_angle, fourth_angle):
 		and fourth_angle > open_palm_line
 	):
 		gesture = 'Opened Palm'
-	else:
+	elif (
+		first_angle <= open_palm_line
+		and second_angle <= open_palm_line
+		and third_angle <= open_palm_line
+		and fourth_angle <= open_palm_line
+	):
 		gesture = 'Closed Palm'
+	elif (
+		first_angle > open_palm_line
+		and second_angle > open_palm_line
+		and third_angle <= open_palm_line
+		and third_angle <= open_palm_line
+	):
+		gesture = 'Victory'
+	else:
+		gesture = 'Others'
 	print(gesture)
 	return gesture
+
 #カメラが読み込まれてる時にループ
 while cap.isOpened():
 	ret, frame = cap.read()
@@ -162,22 +203,22 @@ while cap.isOpened():
 			cv2.circle(frame, (frame_palm_x, frame_palm_y), circle_radius, (0, 255, 255), -1)
 
 			#ジェスチャーとクリック動作
-			first_angle = angle(
+			first_angle = angle_3d(
 				hand_landmarks[5],
 				hand_landmarks[6],
 				hand_landmarks[8]
 			)
-			second_angle = angle(
+			second_angle = angle_3d(
 				hand_landmarks[9],
 				hand_landmarks[10],
 				hand_landmarks[12]
 			)
-			third_angle = angle(
+			third_angle = angle_3d(
 				hand_landmarks[13],
 				hand_landmarks[14],
 				hand_landmarks[16]
 			)
-			fourth_angle = angle(
+			fourth_angle = angle_3d(
 				hand_landmarks[17],
 				hand_landmarks[18],
 				hand_landmarks[20]
@@ -193,14 +234,19 @@ while cap.isOpened():
 				if current_time - last_click_time >= click_cooldown:
 					pyautogui.click()
 					last_click_time = current_time
+			if gesture == 'Victory':
+				current_time = time.monotonic()
+				if current_time - last_click_time >= click_cooldown:
+					pyautogui.rightClick()
+					last_click_time = current_time
 			#マウス操作
-			if gesture != 'Closed Palm':
+			if gesture == 'Opened Palm' or gesture == 'Others':
 				mp_palm_x = max(min_x, min(max_x, mp_palm_x))
 				mp_palm_y = max(min_y, min(max_y, mp_palm_y))
 				target_x = int((1 - (mp_palm_x - min_x) / (max_x - min_x)) * screen_w)
 				target_y = int((mp_palm_y - min_y) / (max_y - min_y) * screen_h)
 				#初回のみ
-				if smooth_x is None:
+				if smooth_x == None:
 					smooth_x = target_x
 					smooth_y = target_y
 					cursor_x = target_x
@@ -220,7 +266,6 @@ while cap.isOpened():
 	#Qキーを押すとループから抜ける
 	if cv2.waitKey(1) & 0xFF == ord('q'):
 		break
-
 #確認用ウインドウの削除
 cap.release()
 cv2.destroyAllWindows()
