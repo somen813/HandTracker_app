@@ -1,0 +1,20 @@
+定数
+UPPER_SNAKE_CASE
+
+通常の変数
+snake_case
+
+正規化座標
+_x_norm / _y_norm
+
+ピクセル座標
+_x_px / _y_px
+
+幅・高さ
+_width / _height
+
+角度
+_angle
+
+閾値
+_threshold
