@@ -44,6 +44,8 @@ HAND_CONNECTIONS = [
 CURSOR_ALPHA = 0.3
 CURSOR_THRESHOLD = 1
 CLICK_COOLDOWN = 0.3
+REQUIRED_FRAMES = 5
+DRAG_DELAY = 3.0
 #ジェスチャー
 OPEN_PALM_AGNLE_THRESHOLD = 120
 #描画
@@ -64,6 +66,7 @@ face_smooth_height_norm = None
 pyautogui.PAUSE = 0
 margin_x = 0.2
 margin_y = 0.2
+cursor_allowed = True
 cursor_min_x_norm = margin_x
 cursor_max_x_norm = 1 - margin_x
 cursor_min_y_norm = margin_y
@@ -73,13 +76,17 @@ cursor_y_px = None
 cursor_smooth_x_px = None
 cursor_smooth_y_px = None
 last_click_time = 0
+candidate_count = 0
+closed_palm_start_time = None
+dragging = False
 
 thumb_angle = None
 index_finger_angle = None
 middle_finger_angle = None
 ring_finger_angle = None
 pinky_finger_angle = None
-gesture = None
+candidate_gesture = None
+confirmed_gesture = "OPEN"
 
 #モニターの情報取得
 monitors = get_monitors()
@@ -171,14 +178,14 @@ def gesture_judge(index_finger_angle, middle_finger_angle, ring_finger_angle, pi
 		and ring_finger_angle > OPEN_PALM_AGNLE_THRESHOLD
 		and pinky_finger_angle > OPEN_PALM_AGNLE_THRESHOLD
 	):
-		gesture = 'Opened Palm'
+		gesture = 'OPEN'
 	elif (
 		index_finger_angle <= OPEN_PALM_AGNLE_THRESHOLD
 		and middle_finger_angle <= OPEN_PALM_AGNLE_THRESHOLD
 		and ring_finger_angle <= OPEN_PALM_AGNLE_THRESHOLD
 		and pinky_finger_angle <= OPEN_PALM_AGNLE_THRESHOLD
 	):
-		gesture = 'Closed Palm'
+		gesture = 'CLOSE'
 	elif (
 		index_finger_angle > OPEN_PALM_AGNLE_THRESHOLD
 		and middle_finger_angle > OPEN_PALM_AGNLE_THRESHOLD
@@ -187,7 +194,7 @@ def gesture_judge(index_finger_angle, middle_finger_angle, ring_finger_angle, pi
 	):
 		gesture = 'Victory'
 	else:
-		gesture = 'Others'
+		gesture = 'OTHERS'
 	print(gesture)
 	return gesture
 
@@ -325,24 +332,49 @@ while cap.isOpened():
 				hand_landmarks[18],
 				hand_landmarks[20]
 			)
-			gesture = gesture_judge(
+			current_gesture = gesture_judge(
 				index_finger_angle, 
 				middle_finger_angle, 
 				ring_finger_angle, 
 				pinky_finger_angle
 			)
-			if gesture == 'Closed Palm':
-				current_time = time.monotonic()
-				if current_time - last_click_time >= CLICK_COOLDOWN:
-					pyautogui.click()
-					last_click_time = current_time
-			if gesture == 'Victory':
-				current_time = time.monotonic()
-				if current_time - last_click_time >= CLICK_COOLDOWN:
-					pyautogui.rightClick()
-					last_click_time = current_time
+			if current_gesture == candidate_gesture:
+				candidate_count += 1
+			else:
+				candidate_count = 1
+				candidate_gesture = current_gesture
+			if candidate_count >= REQUIRED_FRAMES:
+				if confirmed_gesture != candidate_gesture:
+					confirmed_gesture = candidate_gesture
+					if confirmed_gesture == 'OPEN':
+						cursor_allowed = True
+						if dragging:
+							pyautogui.mouseUp()
+							dragging = False
+
+						if closed_palm_start_time is not None:
+							elapsed_time = time.monotonic() - closed_palm_start_time
+							if elapsed_time < DRAG_DELAY:
+								pyautogui.leftClick()
+						closed_palm_start_time = None
+					elif confirmed_gesture == 'CLOSE':
+						cursor_allowed = False
+						closed_palm_start_time = time.monotonic()
+					elif confirmed_gesture == 'Victory':
+						cursor_allowed = False
+						current_time = time.monotonic()
+						if current_time - last_click_time >= CLICK_COOLDOWN:
+							pyautogui.rightClick()
+							last_click_time = current_time
+			if confirmed_gesture == 'CLOSE' and not dragging:
+				elapsed = time.monotonic() - closed_palm_start_time
+				if elapsed >= DRAG_DELAY:
+					pyautogui.mouseDown()
+					dragging = True
+					cursor_allowed = True
+
 			#マウス操作
-			if gesture == 'Opened Palm' or gesture == 'Others':
+			if cursor_allowed == True:
 				palm_x_norm = max(cursor_min_x_norm, min(cursor_max_x_norm, palm_x_norm))
 				palm_y_norm = max(cursor_min_y_norm, min(cursor_max_y_norm, palm_y_norm))
 				target_x_px = int((1 - (palm_x_norm - cursor_min_x_norm) / (cursor_max_x_norm - cursor_min_x_norm)) * screen_width)
