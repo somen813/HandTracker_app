@@ -261,16 +261,16 @@ while cap.isOpened():
 			cursor_min_y_norm = margin_y
 			cursor_max_y_norm = 1 - margin_y
 
-	#検知する範囲の描画
-	left = int(frame_width * cursor_min_x_norm)
-	right = int(frame_width * cursor_max_x_norm)
-	top = int(frame_height * cursor_min_y_norm)
-	bottom = int(frame_height * cursor_max_y_norm)
-	overlay = frame.copy()
-	cv2.rectangle(overlay, (0,0), (frame_width, frame_height), (0,0,0), -1)
-	overlay[top:bottom, left:right] = frame[top:bottom, left:right]
-	frame = cv2.addWeighted(overlay, 0.5, frame, 0.5, 0)
-	cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 0), 4)
+	# #検知する範囲の描画
+	# left = int(frame_width * cursor_min_x_norm)
+	# right = int(frame_width * cursor_max_x_norm)
+	# top = int(frame_height * cursor_min_y_norm)
+	# bottom = int(frame_height * cursor_max_y_norm)
+	# overlay = frame.copy()
+	# cv2.rectangle(overlay, (0,0), (frame_width, frame_height), (0,0,0), -1)
+	# overlay[top:bottom, left:right] = frame[top:bottom, left:right]
+	# frame = cv2.addWeighted(overlay, 0.5, frame, 0.5, 0)
+	# cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 0), 4)
 
 	#手のランドマークの描画、及びカーソル操作
 	if hands_result.hand_landmarks:
