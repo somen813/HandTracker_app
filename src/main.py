@@ -49,8 +49,9 @@ HAND_LOST_LIMIT = 5
 CURSOR_ALPHA = 0.3
 CURSOR_THRESHOLD = 1
 CLICK_COOLDOWN = 0.3
-REQUIRED_FRAMES = 5
+REQUIRED_FRAMES = 3
 DRAG_DELAY = 1.0
+DOUBLE_CLICK_INTERVAL = 0.5
 #ジェスチャー
 OPEN_PALM_ANGLE_THRESHOLD = 120
 #描画
@@ -85,6 +86,7 @@ cursor_smooth_x_px = None
 cursor_smooth_y_px = None
 last_click_time = 0
 candidate_count = 0
+pending_click_time = None
 closed_palm_start_time = None
 dragging = False
 
@@ -107,6 +109,7 @@ cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
 cap.set(cv2.CAP_PROP_FPS, CAMERA_FPS)
 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+print("opened:", cap.isOpened())
 #顔検出
 face_detector = None
 if FACE_DETECTION_BOOL:
@@ -220,6 +223,7 @@ try:
 	while cap.isOpened():
 		ret, frame = cap.read()
 		if ret == False:
+			print("frame read failed")
 			break
 		frame = cv2.flip(frame, 1)
 		rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -378,11 +382,17 @@ try:
 							if closed_palm_start_time is not None:
 								elapsed_time = time.monotonic() - closed_palm_start_time
 								if elapsed_time < DRAG_DELAY:
-									pyautogui.leftClick()
+									now = time.monotonic()
+									if pending_click_time is not None and now - pending_click_time <= DOUBLE_CLICK_INTERVAL:
+										pyautogui.doubleClick()
+										pending_click_time = None
+									else:
+										pending_click_time = now
 							closed_palm_start_time = None
 						elif confirmed_gesture == 'CLOSE' and not dragging:
 							closed_palm_start_time = time.monotonic()
 						elif confirmed_gesture == 'Victory':
+							pending_click_time = None
 							closed_palm_start_time = None
 							current_time = time.monotonic()
 							if current_time - last_click_time >= CLICK_COOLDOWN:
@@ -395,7 +405,7 @@ try:
 						dragging = True
 
 				#マウス操作
-				cursor_allowed = dragging or (confirmed_gesture == 'OPEN' and current_gesture == 'OPEN')
+				cursor_allowed = dragging or (confirmed_gesture == 'OPEN' and current_gesture == 'OPEN' and pending_click_time is None)
 				if cursor_allowed == True:
 					palm_x_norm = max(cursor_min_x_norm, min(cursor_max_x_norm, palm_x_norm))
 					palm_y_norm = max(cursor_min_y_norm, min(cursor_max_y_norm, palm_y_norm))
@@ -426,7 +436,10 @@ try:
 				confirmed_gesture = "OPEN"
 				cursor_smooth_x_px = None
 				cursor_smooth_y_px = None
-		
+		#保留中の単クリックを確定
+		if pending_click_time is not None and time.monotonic() - pending_click_time > DOUBLE_CLICK_INTERVAL:
+			pyautogui.leftClick()
+			pending_click_time = None
 		#確認用ウインドウの表示
 		display = cv2.resize(frame, (frame_width // 2, frame_height // 2))
 		cv2.imshow('Hand Tracking', display)
