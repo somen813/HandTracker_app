@@ -18,6 +18,9 @@ CAMERA_INDEX = 0
 CAMERA_WIDTH = 1920
 CAMERA_HEIGHT = 1080
 CAMERA_FPS = 30
+#推論用の解像度
+INFER_WIDTH = 640
+INFER_HEIGHT = 360
 #顔検出
 FACE_DETECTION_BOOL = False
 FACE_MODEL_PATH = str(BASE_DIR.parent / 'models' / 'blaze_face_short_range.tflite')
@@ -28,7 +31,7 @@ FACE_SMOOTH_ALPHA = 0.1
 FACE_RATIO_X = 1.2
 FACE_RATIO_Y = 0.8
 FACE_OFFSET_X = 0
-FACE_OFFSET_Y = 0
+FACE_OFFSET_Y = 1.4
 #手検出
 HAND_MODEL_PATH = str(BASE_DIR.parent / 'models' / 'hand_landmarker.task')
 HAND_NUM = 1
@@ -50,6 +53,7 @@ CURSOR_ALPHA = 0.3
 CURSOR_THRESHOLD = 1
 CLICK_COOLDOWN = 0.3
 REQUIRED_FRAMES = 3
+REQUIRED_FRAMES_VICTORY = 8
 DRAG_DELAY = 1.0
 DOUBLE_CLICK_INTERVAL = 0.5
 #ジェスチャー
@@ -89,6 +93,7 @@ candidate_count = 0
 pending_click_time = None
 closed_palm_start_time = None
 dragging = False
+last_timestamp_ms = -1
 
 thumb_angle = None
 index_finger_angle = None
@@ -218,6 +223,19 @@ def gesture_judge(index_finger_angle, middle_finger_angle, ring_finger_angle, pi
 		gesture = 'OTHERS'
 	return gesture
 
+class Point3D:
+	def __init__(self, x, y, z):
+		self.x = x
+		self.y = y
+		self.z = z
+
+def to_px(landmark, width, height):	
+	return Point3D(
+		x=landmark.x * width,
+		y=landmark.y * height,
+		z=landmark.z * width
+	)
+
 #メインループ
 try:
 	while cap.isOpened():
@@ -226,12 +244,16 @@ try:
 			print("frame read failed")
 			break
 		frame = cv2.flip(frame, 1)
-		rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+		small_frame = cv2.resize(frame, (INFER_WIDTH, INFER_HEIGHT))
+		rgb = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
 		mp_image = mp.Image(
 			image_format=mp.ImageFormat.SRGB,
 			data=rgb
 		)
 		timestamp_ms = time.monotonic_ns() // 1_000_000
+		if timestamp_ms <= last_timestamp_ms:
+			timestamp_ms = last_timestamp_ms + 1
+		last_timestamp_ms = timestamp_ms
 		hands_result = hands_landmarker.detect_for_video(
 			mp_image,
 			timestamp_ms
@@ -249,10 +271,10 @@ try:
 			face_lost_count = 0
 			detection = face_result.detections[0]
 			bbox = detection.bounding_box
-			face_x_norm = bbox.origin_x / frame_width
-			face_y_norm = bbox.origin_y / frame_height
-			face_width_norm = bbox.width / frame_width
-			face_height_norm = bbox.height / frame_height
+			face_x_norm = bbox.origin_x / INFER_WIDTH
+			face_y_norm = bbox.origin_y / INFER_HEIGHT
+			face_width_norm = bbox.width / INFER_WIDTH
+			face_height_norm = bbox.height / INFER_HEIGHT
 			#最初だけ
 			if face_smooth_x_norm is None:
 				face_smooth_x_norm = face_x_norm
@@ -276,7 +298,7 @@ try:
 			)
 			face_center_x = face_smooth_x_norm + face_smooth_width_norm / 2
 			face_center_y = face_smooth_y_norm + face_smooth_height_norm / 2
-			face_offset_y = face_smooth_height_norm * 1.4
+			face_offset_y = face_smooth_height_norm * FACE_OFFSET_Y
 			cursor_min_x_norm = face_center_x - face_smooth_width_norm * FACE_RATIO_X
 			cursor_max_x_norm = face_center_x + face_smooth_width_norm * FACE_RATIO_X
 			cursor_min_y_norm = face_center_y - face_smooth_height_norm * FACE_RATIO_Y + face_offset_y
@@ -330,7 +352,7 @@ try:
 				for landmark in hand_landmarks:
 					frame_x = int(landmark.x * frame_width)
 					frame_y = int(landmark.y * frame_height)
-					cv2.circle(frame, (frame_x, frame_y), 5, (0, 255, 0), -1)
+					cv2.circle(frame, (frame_x, frame_y), 5, PALM_CIRCLE_COLOR, -1)
 
 				#手のひらの重心に黄色の点
 				indices = [0, 1, 5, 9, 13, 17]
@@ -342,24 +364,24 @@ try:
 
 				#ジェスチャーとクリック動作
 				index_finger_angle = angle_3d(
-					hand_landmarks[5],
-					hand_landmarks[6],
-					hand_landmarks[8]
+					to_px(hand_landmarks[5], frame_width, frame_height),
+					to_px(hand_landmarks[6], frame_width, frame_height),
+					to_px(hand_landmarks[8], frame_width, frame_height)
 				)
 				middle_finger_angle = angle_3d(
-					hand_landmarks[9],
-					hand_landmarks[10],
-					hand_landmarks[12]
+					to_px(hand_landmarks[9], frame_width, frame_height),
+					to_px(hand_landmarks[10], frame_width, frame_height),
+					to_px(hand_landmarks[12], frame_width, frame_height)
 				)
 				ring_finger_angle = angle_3d(
-					hand_landmarks[13],
-					hand_landmarks[14],
-					hand_landmarks[16]
+					to_px(hand_landmarks[13], frame_width, frame_height),
+					to_px(hand_landmarks[14], frame_width, frame_height),
+					to_px(hand_landmarks[16], frame_width, frame_height)
 				)
 				pinky_finger_angle = angle_3d(
-					hand_landmarks[17],
-					hand_landmarks[18],
-					hand_landmarks[20]
+					to_px(hand_landmarks[17], frame_width, frame_height),
+					to_px(hand_landmarks[18], frame_width, frame_height),
+					to_px(hand_landmarks[20], frame_width, frame_height)
 				)
 				current_gesture = gesture_judge(
 					index_finger_angle, 
@@ -372,7 +394,11 @@ try:
 				else:
 					candidate_count = 1
 					candidate_gesture = current_gesture
-				if candidate_count >= REQUIRED_FRAMES:
+				if candidate_gesture == 'Victory':
+					required_frames = REQUIRED_FRAMES_VICTORY
+				else:
+					required_frames = REQUIRED_FRAMES
+				if candidate_count >= required_frames:
 					if confirmed_gesture != candidate_gesture:
 						confirmed_gesture = candidate_gesture
 						if confirmed_gesture == 'OPEN':
