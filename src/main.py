@@ -35,7 +35,7 @@ FACE_OFFSET_Y = 1.4
 #手検出
 HAND_MODEL_PATH = str(BASE_DIR.parent / 'models' / 'hand_landmarker.task')
 HAND_NUM = 1
-HAND_MIN_DETECTION_CONFIDENCE = 0.5
+HAND_MIN_DETECTION_CONFIDENCE = 0.8
 HAND_MIN_HAND_PRESENCE_CONFIDENCE = 0.5
 HAND_MIN_TRACKING_CONFIDENCE = 0.5
 HAND_CONNECTIONS = [
@@ -340,10 +340,8 @@ try:
 				#右手 -> 赤, 左手 -> 青
 				if handedness_name == 'Left':
 					line_color = (0, 0, 255)
-					print("Right hand detected")
 				else:
 					line_color = (255, 0, 0)
-					print("Left hand detected")
 				#点と線の描画
 				for start, end in HAND_CONNECTIONS:
 					mp_p1 = hand_landmarks[start]
