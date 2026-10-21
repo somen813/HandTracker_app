@@ -54,14 +54,16 @@ CURSOR_THRESHOLD = 1
 CLICK_COOLDOWN = 0.3
 REQUIRED_FRAMES = 3
 REQUIRED_FRAMES_VICTORY = 8
-DRAG_DELAY = 1.0
+DRAG_DELAY = 0.5
 DOUBLE_CLICK_INTERVAL = 0.5
 #ジェスチャー
 OPEN_PALM_ANGLE_THRESHOLD = 120
 #描画
-PALM_CIRCLE_RADIUS = 8
-PALM_CIRCLE_COLOR = (0, 255, 0)
-PALM_LINE_THICKNESS = 4
+LANDMARK_CIRCLE_RADIUS = 5
+LANDMARK_CIRCLE_COLOR = (0, 255, 0)
+PALM_CENTER_CIRCLE_RADIUS = 8
+PALM_CENTER_CIRCLE_COLOR = (0, 255, 255)
+HAND_LINE_THICKNESS = 2
 
 #====================
 #初期化
@@ -336,10 +338,12 @@ try:
 				handedness = hands_result.handedness[i][0]
 				handedness_name = handedness.category_name
 				#右手 -> 赤, 左手 -> 青
-				if handedness_name == 'Right':
+				if handedness_name == 'Left':
 					line_color = (0, 0, 255)
+					print("Right hand detected")
 				else:
 					line_color = (255, 0, 0)
+					print("Left hand detected")
 				#点と線の描画
 				for start, end in HAND_CONNECTIONS:
 					mp_p1 = hand_landmarks[start]
@@ -348,11 +352,11 @@ try:
 					frame_y1_px = int(mp_p1.y * frame_height)
 					frame_x2 = int(mp_p2.x * frame_width)
 					frame_y2 = int(mp_p2.y * frame_height)
-					cv2.line(frame, (frame_x1_px ,frame_y1_px), (frame_x2, frame_y2), line_color, 2)
+					cv2.line(frame, (frame_x1_px ,frame_y1_px), (frame_x2, frame_y2), line_color, HAND_LINE_THICKNESS)
 				for landmark in hand_landmarks:
 					frame_x = int(landmark.x * frame_width)
 					frame_y = int(landmark.y * frame_height)
-					cv2.circle(frame, (frame_x, frame_y), 5, PALM_CIRCLE_COLOR, -1)
+					cv2.circle(frame, (frame_x, frame_y), LANDMARK_CIRCLE_RADIUS, LANDMARK_CIRCLE_COLOR, -1)
 
 				#手のひらの重心に黄色の点
 				indices = [0, 1, 5, 9, 13, 17]
@@ -360,7 +364,7 @@ try:
 				palm_y_norm = mean([hand_landmarks[i].y for i in indices])
 				palm_x_px = int(palm_x_norm * frame_width)
 				frame_palm_y = int(palm_y_norm * frame_height)
-				cv2.circle(frame, (palm_x_px, frame_palm_y), PALM_CIRCLE_RADIUS, (0, 255, 255), -1)
+				cv2.circle(frame, (palm_x_px, frame_palm_y), PALM_CENTER_CIRCLE_RADIUS, PALM_CENTER_CIRCLE_COLOR, -1)
 
 				#ジェスチャーとクリック動作
 				index_finger_angle = angle_3d(
